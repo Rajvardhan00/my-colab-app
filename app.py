@@ -6,584 +6,545 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, precision_score, recall_score, classification_report
 from sklearn.neural_network import MLPClassifier
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
-import pickle
-import io
-import plotly.graph_objects as go
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
 import plotly.express as px
+import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# Page configuration
+# Try to import TensorFlow, but make it optional
+try:
+    import tensorflow as tf
+    from tensorflow import keras
+    from tensorflow.keras import layers
+    TENSORFLOW_AVAILABLE = True
+except ImportError:
+    TENSORFLOW_AVAILABLE = False
+
+# App Configuration
 st.set_page_config(
-    page_title="AI-Powered Parkinson's Disease Detection System",
-    page_icon="🧠",
+    page_title="🧠 AI Parkinson's Detection System",
+    page_icon="🔬",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS (Enhanced)
+# Custom CSS for better styling
 st.markdown("""
 <style>
     .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        text-align: center;
         background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 2rem;
-    }
-    .metric-card {
-        background-color: #f8f9fa;
-        padding: 1rem;
-        border-radius: 10px;
-        border-left: 4px solid #667eea;
-        margin: 1rem 0;
-        transition: transform 0.2s;
-    }
-    .metric-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
-    .dl-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 1rem;
-        border-radius: 10px;
-        margin: 1rem 0;
-        transition: transform 0.2s;
-    }
-    .dl-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 6px 12px rgba(0,0,0,0.2);
-    }
-    .prediction-result {
-        font-size: 1.5rem;
-        font-weight: bold;
-        text-align: center;
         padding: 2rem;
         border-radius: 10px;
-        margin: 2rem 0;
-    }
-    .positive-result {
-        background-color: #ffebee;
-        color: #c62828;
-        border: 2px solid #ef5350;
-    }
-    .negative-result {
-        background-color: #e8f5e8;
-        color: #2e7d32;
-        border: 2px solid #66bb6a;
-    }
-    .neural-architecture {
-        background: linear-gradient(45deg, #f093fb 0%, #f5576c 100%);
+        margin-bottom: 2rem;
         color: white;
-        padding: 1.5rem;
-        border-radius: 15px;
-        margin: 1rem 0;
         text-align: center;
+    }
+    .metric-card {
+        background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+        padding: 1rem;
+        border-radius: 8px;
+        color: white;
+        text-align: center;
+        margin: 0.5rem 0;
+    }
+    .model-section {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        border-left: 4px solid #667eea;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Sample training data (same as before)
+# Main Header
+st.markdown("""
+<div class="main-header">
+    <h1>🧠 AI-Powered Parkinson's Disease Detection</h1>
+    <p>Advanced Machine Learning & Deep Learning Analysis System</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Load the dataset
 @st.cache_data
-def load_sample_data():
-    # Create sample data with features similar to your Colab dataset
-    np.random.seed(42)
-    n_samples = 200
-    
-    # Generate sample features based on typical Parkinson's voice measurements
-    data = {
-        'MDVP:Fo(Hz)': np.random.normal(154, 40, n_samples),
-        'MDVP:Fhi(Hz)': np.random.normal(197, 60, n_samples),
-        'MDVP:Flo(Hz)': np.random.normal(116, 30, n_samples),
-        'MDVP:Jitter(%)': np.random.exponential(0.006, n_samples),
-        'MDVP:Jitter(Abs)': np.random.exponential(0.00004, n_samples),
-        'MDVP:RAP': np.random.exponential(0.003, n_samples),
-        'MDVP:PPQ': np.random.exponential(0.003, n_samples),
-        'Jitter:DDP': np.random.exponential(0.009, n_samples),
-        'MDVP:Shimmer': np.random.exponential(0.03, n_samples),
-        'MDVP:Shimmer(dB)': np.random.normal(0.3, 0.2, n_samples),
-        'Shimmer:APQ3': np.random.exponential(0.015, n_samples),
-        'Shimmer:APQ5': np.random.exponential(0.018, n_samples),
-        'MDVP:APQ': np.random.exponential(0.024, n_samples),
-        'Shimmer:DDA': np.random.exponential(0.045, n_samples),
-        'NHR': np.random.exponential(0.025, n_samples),
-        'HNR': np.random.normal(21, 4, n_samples),
-        'RPDE': np.random.normal(0.5, 0.1, n_samples),
-        'DFA': np.random.normal(0.7, 0.1, n_samples),
-        'spread1': np.random.normal(-6, 1, n_samples),
-        'spread2': np.random.normal(0.2, 0.1, n_samples),
-        'D2': np.random.normal(2.2, 0.3, n_samples),
-        'PPE': np.random.normal(0.2, 0.1, n_samples)
-    }
-    
-    df = pd.DataFrame(data)
-    
-    # Create target based on realistic patterns
-    prob_parkinsons = (
-        (df['MDVP:Jitter(%)'] > 0.007).astype(int) * 0.3 +
-        (df['MDVP:Shimmer'] > 0.04).astype(int) * 0.3 +
-        (df['NHR'] > 0.03).astype(int) * 0.2 +
-        (df['HNR'] < 20).astype(int) * 0.2
-    )
-    df['status'] = (prob_parkinsons > 0.4).astype(int)
-    
-    return df
+def load_data():
+    """Load and return the Parkinson's dataset"""
+    url = "https://archive.ics.uci.edu/ml/machine-learning-databases/parkinsons/parkinsons.data"
+    try:
+        data = pd.read_csv(url)
+        return data
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return None
 
-# Enhanced model training with Deep Learning
-@st.cache_resource
-def train_models():
-    df = load_sample_data()
-    X = df.drop('status', axis=1)
-    y = df['status']
+# Sidebar - Data Info
+st.sidebar.title("📊 Dataset Information")
+data = load_data()
+
+if data is not None:
+    st.sidebar.success("✅ Dataset loaded successfully!")
+    st.sidebar.write(f"**Total Samples:** {len(data)}")
+    st.sidebar.write(f"**Features:** {len(data.columns)-1}")
+    st.sidebar.write(f"**Parkinson's Cases:** {data['status'].sum()}")
+    st.sidebar.write(f"**Healthy Cases:** {len(data) - data['status'].sum()}")
     
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    # Data preprocessing
+    X = data.drop(['name', 'status'], axis=1)
+    y = data['status']
     
-    # Standardize features
+    # Feature scaling
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    X_scaled = scaler.fit_transform(X)
     
-    models = {}
-    model_performance = {}
-    
-    # Original ML Models (unchanged)
-    # K-Nearest Neighbors
-    knn = KNeighborsClassifier(n_neighbors=5)
-    knn.fit(X_train_scaled, y_train)
-    models['KNN'] = (knn, scaler)
-    model_performance['KNN'] = {
-        'accuracy': 94.87,
-        'precision': 94.12,
-        'recall': 100.0,
-        'type': 'Classical ML'
-    }
-    
-    # Naive Bayes
-    nb = GaussianNB()
-    nb.fit(X_train_scaled, y_train)
-    models['Naive Bayes'] = (nb, scaler)
-    model_performance['Naive Bayes'] = {
-        'accuracy': 100.0,
-        'precision': 100.0,
-        'recall': 100.0,
-        'type': 'Classical ML'
-    }
-    
-    # SVM
-    svm = SVC(kernel='rbf', probability=True)
-    svm.fit(X_train_scaled, y_train)
-    models['SVM'] = (svm, scaler)
-    model_performance['SVM'] = {
-        'accuracy': 89.74,
-        'precision': 88.89,
-        'recall': 100.0,
-        'type': 'Classical ML'
-    }
-    
-    # NEW: Deep Learning Models
-    
-    # 1. Multi-Layer Perceptron (sklearn implementation)
-    mlp = MLPClassifier(
-        hidden_layer_sizes=(128, 64, 32),
-        activation='relu',
-        solver='adam',
-        alpha=0.001,
-        batch_size='auto',
-        learning_rate='adaptive',
-        max_iter=1000,
-        random_state=42
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_scaled, y, test_size=0.2, random_state=42, stratify=y
     )
-    mlp.fit(X_train_scaled, y_train)
-    mlp_pred = mlp.predict(X_test_scaled)
-    mlp_acc = accuracy_score(y_test, mlp_pred) * 100
-    
-    models['Neural Network (MLP)'] = (mlp, scaler)
-    model_performance['Neural Network (MLP)'] = {
-        'accuracy': round(mlp_acc, 2),
-        'precision': round(precision_score(y_test, mlp_pred) * 100, 2),
-        'recall': round(recall_score(y_test, mlp_pred) * 100, 2),
-        'type': 'Deep Learning',
-        'architecture': '22→128→64→32→2'
-    }
-    
-    # 2. TensorFlow/Keras Deep Neural Network
-    tf.random.set_seed(42)
-    
-    # Build deep neural network
-    deep_model = keras.Sequential([
-        layers.Dense(256, activation='relu', input_shape=(X_train_scaled.shape[1],)),
-        layers.Dropout(0.3),
-        layers.BatchNormalization(),
-        layers.Dense(128, activation='relu'),
-        layers.Dropout(0.3),
-        layers.BatchNormalization(),
-        layers.Dense(64, activation='relu'),
-        layers.Dropout(0.2),
-        layers.Dense(32, activation='relu'),
-        layers.Dropout(0.1),
-        layers.Dense(16, activation='relu'),
-        layers.Dense(1, activation='sigmoid')
-    ])
-    
-    # Compile model
-    deep_model.compile(
-        optimizer=keras.optimizers.Adam(learning_rate=0.001),
-        loss='binary_crossentropy',
-        metrics=['accuracy', 'precision', 'recall']
-    )
-    
-    # Train with early stopping
-    early_stopping = keras.callbacks.EarlyStopping(
-        monitor='val_loss',
-        patience=20,
-        restore_best_weights=True
-    )
-    
-    # Train the model (suppress output)
-    with st.spinner("Training Deep Neural Network..."):
-        history = deep_model.fit(
-            X_train_scaled, y_train,
-            epochs=100,
-            batch_size=32,
-            validation_split=0.2,
-            callbacks=[early_stopping],
-            verbose=0
-        )
-    
-    # Evaluate deep model
-    deep_pred_proba = deep_model.predict(X_test_scaled, verbose=0)
-    deep_pred = (deep_pred_proba > 0.5).astype(int).flatten()
-    deep_acc = accuracy_score(y_test, deep_pred) * 100
-    
-    models['Deep Neural Network'] = (deep_model, scaler)
-    model_performance['Deep Neural Network'] = {
-        'accuracy': round(deep_acc, 2),
-        'precision': round(precision_score(y_test, deep_pred) * 100, 2),
-        'recall': round(recall_score(y_test, deep_pred) * 100, 2),
-        'type': 'Deep Learning',
-        'architecture': '22→256→128→64→32→16→1',
-        'history': history
-    }
-    
-    # 3. Ensemble Deep Learning Model
-    # Create ensemble predictions
-    ensemble_preds = []
-    
-    # Get predictions from all models
-    nb_pred = nb.predict_proba(X_test_scaled)[:, 1]
-    mlp_pred_proba = mlp.predict_proba(X_test_scaled)[:, 1]
-    deep_pred_proba_flat = deep_pred_proba.flatten()
-    
-    # Weighted ensemble (giving more weight to better performing models)
-    ensemble_pred_proba = (
-        0.4 * nb_pred +  # Highest weight to best performer
-        0.3 * mlp_pred_proba +
-        0.3 * deep_pred_proba_flat
-    )
-    
-    ensemble_pred = (ensemble_pred_proba > 0.5).astype(int)
-    ensemble_acc = accuracy_score(y_test, ensemble_pred) * 100
-    
-    models['AI Ensemble'] = ('ensemble', scaler, nb, mlp, deep_model)
-    model_performance['AI Ensemble'] = {
-        'accuracy': round(ensemble_acc, 2),
-        'precision': round(precision_score(y_test, ensemble_pred) * 100, 2),
-        'recall': round(recall_score(y_test, ensemble_pred) * 100, 2),
-        'type': 'Deep Learning Ensemble',
-        'architecture': 'NB + MLP + DNN'
-    }
-    
-    return models, model_performance, X.columns.tolist()
+else:
+    st.error("Failed to load dataset. Please check your internet connection.")
+    st.stop()
 
-# Sidebar navigation (enhanced)
-st.sidebar.title("🧠 AI Navigation")
-page = st.sidebar.selectbox("Choose a page:", 
-                           ["🏠 Home", "🔍 Single Prediction", "📁 Batch Prediction", 
-                            "📊 Model Comparison", "🧬 Deep Learning Insights", "ℹ️ About"])
+# Main content
+tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI Models", "📈 Data Analysis", "🔮 Prediction", "📊 Model Comparison"])
 
-# Load models
-models, performance, feature_names = train_models()
-
-if page == "🏠 Home":
-    st.markdown('<div class="main-header">🤖 AI-Powered Parkinson\'s Disease Detection System</div>', unsafe_allow_html=True)
+with tab1:
+    st.header("🤖 Machine Learning & Deep Learning Models")
     
-    st.markdown("""
-    ### Welcome to Advanced AI-Powered Parkinson's Disease Detection
-    
-    This cutting-edge application combines classical machine learning with state-of-the-art **Deep Learning** algorithms 
-    to detect Parkinson's disease based on voice measurements. Our system now features **5 powerful AI models** 
-    including neural networks and ensemble methods.
-    """)
-    
-    # Display model performance in two rows
-    st.markdown("#### 🎯 Classical Machine Learning Models")
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("""
-        <div class="metric-card">
-            <h3>🧠 Naive Bayes</h3>
-            <p><strong>Accuracy:</strong> 100.0%</p>
-            <p><strong>Precision:</strong> 100.0%</p>
-            <p><strong>Recall:</strong> 100.0%</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown("""
-        <div class="metric-card">
-            <h3>🎯 K-Nearest Neighbors</h3>
-            <p><strong>Accuracy:</strong> 94.87%</p>
-            <p><strong>Precision:</strong> 94.12%</p>
-            <p><strong>Recall:</strong> 100.0%</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown("""
-        <div class="metric-card">
-            <h3>⚡ Support Vector Machine</h3>
-            <p><strong>Accuracy:</strong> 89.74%</p>
-            <p><strong>Precision:</strong> 88.89%</p>
-            <p><strong>Recall:</strong> 100.0%</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("#### 🚀 Deep Learning & AI Models")
-    col4, col5 = st.columns(2)
-    
-    with col4:
-        mlp_perf = performance['Neural Network (MLP)']
-        st.markdown(f"""
-        <div class="dl-card">
-            <h3>🧬 Neural Network (MLP)</h3>
-            <p><strong>Accuracy:</strong> {mlp_perf['accuracy']:.2f}%</p>
-            <p><strong>Precision:</strong> {mlp_perf['precision']:.2f}%</p>
-            <p><strong>Recall:</strong> {mlp_perf['recall']:.2f}%</p>
-            <p><small>Architecture: {mlp_perf['architecture']}</small></p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col5:
-        deep_perf = performance['Deep Neural Network']
-        st.markdown(f"""
-        <div class="dl-card">
-            <h3>🌊 Deep Neural Network</h3>
-            <p><strong>Accuracy:</strong> {deep_perf['accuracy']:.2f}%</p>
-            <p><strong>Precision:</strong> {deep_perf['precision']:.2f}%</p>
-            <p><strong>Recall:</strong> {deep_perf['recall']:.2f}%</p>
-            <p><small>Architecture: {deep_perf['architecture']}</small></p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Ensemble model (full width)
-    ensemble_perf = performance['AI Ensemble']
-    st.markdown(f"""
-    <div class="neural-architecture">
-        <h2>🎭 AI Ensemble Model</h2>
-        <h3>Accuracy: {ensemble_perf['accuracy']:.2f}% | Precision: {ensemble_perf['precision']:.2f}% | Recall: {ensemble_perf['recall']:.2f}%</h3>
-        <p>Combines the power of Naive Bayes + Neural Network + Deep Learning</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("""
-    ### 🚀 New AI Features:
-    - **🧬 Neural Networks**: Multi-layer perceptrons with adaptive learning
-    - **🌊 Deep Learning**: TensorFlow-based deep neural networks with dropout and batch normalization
-    - **🎭 AI Ensemble**: Intelligent combination of multiple AI models
-    - **📈 Real-time Training**: Dynamic model optimization with early stopping
-    - **🔍 Advanced Analytics**: Deep learning insights and visualizations
-    
-    ### ⚠️ Medical Disclaimer:
-    This AI system is for educational and research purposes only. It should not be used as a substitute for professional medical diagnosis or treatment.
-    """)
-
-elif page == "🔍 Single Prediction":
-    st.markdown('<div class="main-header">🔍 AI-Powered Single Patient Prediction</div>', unsafe_allow_html=True)
-    
-    # Enhanced model selection
-    model_categories = {
-        "Classical ML": ["Naive Bayes", "KNN", "SVM"],
-        "Deep Learning": ["Neural Network (MLP)", "Deep Neural Network"],
-        "AI Ensemble": ["AI Ensemble"]
-    }
-    
-    category = st.selectbox("Choose Model Category:", list(model_categories.keys()))
-    selected_model = st.selectbox("Choose Specific Model:", model_categories[category])
-    
-    st.markdown("### Voice Measurement Parameters")
-    st.markdown("Please enter the voice measurement values for the patient:")
-    
-    # Create input form with two columns (same as before)
+    # Model selection
     col1, col2 = st.columns(2)
     
-    input_data = {}
-    
     with col1:
-        input_data['MDVP:Fo(Hz)'] = st.number_input('MDVP:Fo(Hz) - Average vocal fundamental frequency', value=154.228, format="%.3f")
-        input_data['MDVP:Fhi(Hz)'] = st.number_input('MDVP:Fhi(Hz) - Maximum vocal fundamental frequency', value=197.104, format="%.3f")
-        input_data['MDVP:Flo(Hz)'] = st.number_input('MDVP:Flo(Hz) - Minimum vocal fundamental frequency', value=116.676, format="%.3f")
-        input_data['MDVP:Jitter(%)'] = st.number_input('MDVP:Jitter(%) - Frequency variation', value=0.00662, format="%.5f")
-        input_data['MDVP:Jitter(Abs)'] = st.number_input('MDVP:Jitter(Abs) - Absolute jitter', value=0.000034, format="%.6f")
-        input_data['MDVP:RAP'] = st.number_input('MDVP:RAP - Relative average perturbation', value=0.00401, format="%.5f")
-        input_data['MDVP:PPQ'] = st.number_input('MDVP:PPQ - Period perturbation quotient', value=0.00317, format="%.5f")
-        input_data['Jitter:DDP'] = st.number_input('Jitter:DDP - Average absolute difference', value=0.01204, format="%.5f")
-        input_data['MDVP:Shimmer'] = st.number_input('MDVP:Shimmer - Amplitude variation', value=0.025490, format="%.6f")
-        input_data['MDVP:Shimmer(dB)'] = st.number_input('MDVP:Shimmer(dB) - Shimmer in decibels', value=0.230, format="%.3f")
-        input_data['Shimmer:APQ3'] = st.number_input('Shimmer:APQ3 - Amplitude perturbation quotient', value=0.01438, format="%.5f")
+        st.markdown("### 🎯 Select AI Models")
+        use_knn = st.checkbox("K-Nearest Neighbors", value=True)
+        use_nb = st.checkbox("Naive Bayes", value=True)
+        use_svm = st.checkbox("Support Vector Machine", value=True)
+        use_mlp = st.checkbox("Neural Network (MLP)", value=True)
+        
+        if TENSORFLOW_AVAILABLE:
+            use_deep = st.checkbox("Deep Neural Network (TensorFlow)", value=True)
+        else:
+            st.warning("⚠️ TensorFlow not available. Deep Learning model disabled.")
+            use_deep = False
     
     with col2:
-        input_data['Shimmer:APQ5'] = st.number_input('Shimmer:APQ5 - Five-point amplitude perturbation quotient', value=0.01643, format="%.5f")
-        input_data['MDVP:APQ'] = st.number_input('MDVP:APQ - Amplitude perturbation quotient', value=0.02182, format="%.5f")
-        input_data['Shimmer:DDA'] = st.number_input('Shimmer:DDA - Average absolute differences', value=0.04314, format="%.5f")
-        input_data['NHR'] = st.number_input('NHR - Noise-to-harmonics ratio', value=0.014910, format="%.6f")
-        input_data['HNR'] = st.number_input('HNR - Harmonics-to-noise ratio', value=21.033, format="%.3f")
-        input_data['RPDE'] = st.number_input('RPDE - Recurrence period density entropy', value=0.496690, format="%.6f")
-        input_data['DFA'] = st.number_input('DFA - Detrended fluctuation analysis', value=0.718282, format="%.6f")
-        input_data['spread1'] = st.number_input('spread1 - Fundamental frequency spread', value=-5.684397, format="%.6f")
-        input_data['spread2'] = st.number_input('spread2 - Fundamental frequency spread', value=0.190667, format="%.6f")
-        input_data['D2'] = st.number_input('D2 - Correlation dimension', value=2.194915, format="%.6f")
-        input_data['PPE'] = st.number_input('PPE - Pitch period entropy', value=0.152671, format="%.6f")
-    
-    if st.button("🚀 AI Predict", type="primary"):
-        # Prepare input data
-        input_df = pd.DataFrame([input_data])
+        st.markdown("### ⚙️ Model Parameters")
         
-        # Handle different model types
-        if selected_model == 'AI Ensemble':
-            _, scaler, nb_model, mlp_model, deep_model = models[selected_model]
-            input_scaled = scaler.transform(input_df)
-            
-            # Get predictions from all models
-            nb_pred = nb_model.predict_proba(input_scaled)[:, 1][0]
-            mlp_pred = mlp_model.predict_proba(input_scaled)[:, 1][0]
-            deep_pred = deep_model.predict(input_scaled, verbose=0)[0][0]
-            
-            # Ensemble prediction
-            ensemble_pred_proba = 0.4 * nb_pred + 0.3 * mlp_pred + 0.3 * deep_pred
-            prediction = 1 if ensemble_pred_proba > 0.5 else 0
-            confidence = max(ensemble_pred_proba, 1-ensemble_pred_proba) * 100
-            
-            # Show individual model contributions
-            st.markdown("#### Individual Model Contributions:")
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Naive Bayes", f"{nb_pred*100:.1f}%")
-            col2.metric("Neural Network", f"{mlp_pred*100:.1f}%")
-            col3.metric("Deep Learning", f"{deep_pred*100:.1f}%")
-            
-        elif selected_model in ['Deep Neural Network']:
-            deep_model, scaler = models[selected_model]
-            input_scaled = scaler.transform(input_df)
-            prediction_proba = deep_model.predict(input_scaled, verbose=0)[0][0]
-            prediction = 1 if prediction_proba > 0.5 else 0
-            confidence = max(prediction_proba, 1-prediction_proba) * 100
-            
-        else:
-            # Classical ML and MLP
-            model, scaler = models[selected_model]
-            input_scaled = scaler.transform(input_df)
-            prediction = model.predict(input_scaled)[0]
-            
-            try:
-                prediction_proba = model.predict_proba(input_scaled)[0]
-                confidence = max(prediction_proba) * 100
-            except:
-                confidence = performance[selected_model]['accuracy']
+        if use_knn:
+            k_value = st.slider("KNN - Number of Neighbors", 3, 15, 5)
         
-        # Display results with AI styling
-        if prediction == 1:
-            st.markdown(f"""
-            <div class="prediction-result positive-result">
-                ⚠️ AI DETECTION: Parkinson's Disease Detected<br>
-                Model: {selected_model} ({performance[selected_model]['type']})<br>
-                Confidence: {confidence:.1f}%
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown(f"""
-            <div class="prediction-result negative-result">
-                ✅ AI ANALYSIS: No Parkinson's Disease Detected<br>
-                Model: {selected_model} ({performance[selected_model]['type']})<br>
-                Confidence: {confidence:.1f}%
-            </div>
-            """, unsafe_allow_html=True)
+        if use_mlp:
+            hidden_layers = st.selectbox(
+                "Neural Network - Hidden Layer Size",
+                [(100,), (128, 64), (128, 64, 32)],
+                index=2
+            )
+    
+    # Train and evaluate models
+    if st.button("🚀 Train All Models", type="primary"):
+        models = {}
+        results = {}
         
-        # Display model performance
-        st.markdown("### AI Model Performance:")
-        perf = performance[selected_model]
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Accuracy", f"{perf['accuracy']:.2f}%")
-        col2.metric("Precision", f"{perf['precision']:.2f}%")
-        col3.metric("Recall", f"{perf['recall']:.2f}%")
-        col4.metric("Model Type", perf['type'])
-
-elif page == "📁 Batch Prediction":
-    st.markdown('<div class="main-header">📁 AI Batch Prediction</div>', unsafe_allow_html=True)
-    
-    st.markdown("### Upload CSV File for AI-Powered Multiple Predictions")
-    
-    # Enhanced model selection
-    all_models = list(models.keys())
-    selected_model = st.selectbox("Choose AI Model:", all_models)
-    
-    uploaded_file = st.file_uploader("Choose CSV file", type="csv")
-    
-    if uploaded_file is not None:
-        try:
-            df = pd.read_csv(uploaded_file)
-            st.write("### Data Preview:")
-            st.dataframe(df.head())
+        with st.spinner("Training AI models... 🧠"):
+            progress_bar = st.progress(0)
             
-            if st.button("🚀 Process AI Batch Predictions"):
-                # Handle different model types (same logic as single prediction)
-                if selected_model == 'AI Ensemble':
-                    _, scaler, nb_model, mlp_model, deep_model = models[selected_model]
-                    X_scaled = scaler.transform(df[feature_names])
-                    
-                    nb_preds = nb_model.predict_proba(X_scaled)[:, 1]
-                    mlp_preds = mlp_model.predict_proba(X_scaled)[:, 1]
-                    deep_preds = deep_model.predict(X_scaled, verbose=0).flatten()
-                    
-                    ensemble_preds_proba = 0.4 * nb_preds + 0.3 * mlp_preds + 0.3 * deep_preds
-                    predictions = (ensemble_preds_proba > 0.5).astype(int)
-                    
-                elif selected_model == 'Deep Neural Network':
-                    deep_model, scaler = models[selected_model]
-                    X_scaled = scaler.transform(df[feature_names])
-                    predictions_proba = deep_model.predict(X_scaled, verbose=0).flatten()
-                    predictions = (predictions_proba > 0.5).astype(int)
-                    
-                else:
-                    model, scaler = models[selected_model]
-                    X_scaled = scaler.transform(df[feature_names])
-                    predictions = model.predict(X_scaled)
+            model_count = 0
+            total_models = sum([use_knn, use_nb, use_svm, use_mlp, use_deep])
+            
+            # K-Nearest Neighbors
+            if use_knn:
+                knn = KNeighborsClassifier(n_neighbors=k_value)
+                knn.fit(X_train, y_train)
+                knn_pred = knn.predict(X_test)
+                models['KNN'] = knn
+                results['KNN'] = {
+                    'accuracy': accuracy_score(y_test, knn_pred),
+                    'predictions': knn_pred
+                }
+                model_count += 1
+                progress_bar.progress(model_count / total_models)
+            
+            # Naive Bayes
+            if use_nb:
+                nb = GaussianNB()
+                nb.fit(X_train, y_train)
+                nb_pred = nb.predict(X_test)
+                models['Naive Bayes'] = nb
+                results['Naive Bayes'] = {
+                    'accuracy': accuracy_score(y_test, nb_pred),
+                    'predictions': nb_pred
+                }
+                model_count += 1
+                progress_bar.progress(model_count / total_models)
+            
+            # SVM
+            if use_svm:
+                svm = SVC(kernel='rbf', probability=True)
+                svm.fit(X_train, y_train)
+                svm_pred = svm.predict(X_test)
+                models['SVM'] = svm
+                results['SVM'] = {
+                    'accuracy': accuracy_score(y_test, svm_pred),
+                    'predictions': svm_pred
+                }
+                model_count += 1
+                progress_bar.progress(model_count / total_models)
+            
+            # Neural Network (MLP)
+            if use_mlp:
+                mlp = MLPClassifier(
+                    hidden_layer_sizes=hidden_layers,
+                    activation='relu',
+                    solver='adam',
+                    learning_rate='adaptive',
+                    max_iter=1000,
+                    random_state=42
+                )
+                mlp.fit(X_train, y_train)
+                mlp_pred = mlp.predict(X_test)
+                models['Neural Network'] = mlp
+                results['Neural Network'] = {
+                    'accuracy': accuracy_score(y_test, mlp_pred),
+                    'predictions': mlp_pred
+                }
+                model_count += 1
+                progress_bar.progress(model_count / total_models)
+            
+            # Deep Neural Network (TensorFlow)
+            if use_deep and TENSORFLOW_AVAILABLE:
+                # Build deep neural network
+                deep_model = keras.Sequential([
+                    layers.Dense(256, activation='relu', input_shape=(X_train.shape[1],)),
+                    layers.Dropout(0.3),
+                    layers.BatchNormalization(),
+                    layers.Dense(128, activation='relu'),
+                    layers.Dropout(0.3),
+                    layers.BatchNormalization(),
+                    layers.Dense(64, activation='relu'),
+                    layers.Dense(32, activation='relu'),
+                    layers.Dense(16, activation='relu'),
+                    layers.Dense(1, activation='sigmoid')
+                ])
                 
-                # Add predictions to dataframe
-                df['AI_Prediction'] = predictions
-                df['AI_Prediction_Label'] = df['AI_Prediction'].map({0: 'Healthy', 1: 'Parkinson\'s'})
-                df['AI_Model_Used'] = selected_model
+                # Compile model
+                deep_model.compile(
+                    optimizer=keras.optimizers.Adam(learning_rate=0.001),
+                    loss='binary_crossentropy',
+                    metrics=['accuracy']
+                )
+                
+                # Train model
+                early_stopping = keras.callbacks.EarlyStopping(
+                    monitor='val_loss',
+                    patience=20,
+                    restore_best_weights=True
+                )
+                
+                deep_model.fit(
+                    X_train, y_train,
+                    epochs=100,
+                    batch_size=16,
+                    validation_split=0.2,
+                    callbacks=[early_stopping],
+                    verbose=0
+                )
+                
+                # Make predictions
+                deep_pred_proba = deep_model.predict(X_test, verbose=0)
+                deep_pred = (deep_pred_proba > 0.5).astype(int).flatten()
+                
+                models['Deep Neural Network'] = deep_model
+                results['Deep Neural Network'] = {
+                    'accuracy': accuracy_score(y_test, deep_pred),
+                    'predictions': deep_pred
+                }
+                model_count += 1
+                progress_bar.progress(model_count / total_models)
+        
+        # Display Results
+        st.success("🎉 All models trained successfully!")
+        
+        # Create results visualization
+        model_names = list(results.keys())
+        accuracies = [results[model]['accuracy'] for model in model_names]
+        
+        # Accuracy comparison chart
+        fig = px.bar(
+            x=model_names,
+            y=accuracies,
+            title="🏆 Model Accuracy Comparison",
+            labels={'x': 'AI Models', 'y': 'Accuracy'},
+            color=accuracies,
+            color_continuous_scale='viridis'
+        )
+        fig.update_layout(showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Detailed results
+        st.markdown("### 📊 Detailed Results")
+        
+        cols = st.columns(len(results))
+        for i, (model_name, result) in enumerate(results.items()):
+            with cols[i]:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <h4>{model_name}</h4>
+                    <h2>{result['accuracy']:.4f}</h2>
+                    <p>Accuracy Score</p>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # Confusion matrices
+        st.markdown("### 🎯 Confusion Matrices")
+        
+        fig, axes = plt.subplots(1, len(results), figsize=(5*len(results), 4))
+        if len(results) == 1:
+            axes = [axes]
+        
+        for i, (model_name, result) in enumerate(results.items()):
+            cm = confusion_matrix(y_test, result['predictions'])
+            sns.heatmap(cm, annot=True, fmt='d', ax=axes[i], cmap='Blues')
+            axes[i].set_title(f'{model_name}')
+            axes[i].set_xlabel('Predicted')
+            axes[i].set_ylabel('Actual')
+        
+        plt.tight_layout()
+        st.pyplot(fig)
+        
+        # Store results in session state
+        st.session_state['models'] = models
+        st.session_state['results'] = results
+        st.session_state['scaler'] = scaler
+        st.session_state['feature_names'] = X.columns.tolist()
+
+with tab2:
+    st.header("📈 Parkinson's Dataset Analysis")
+    
+    if data is not None:
+        # Dataset overview
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total Samples", len(data))
+        with col2:
+            st.metric("Parkinson's Cases", data['status'].sum())
+        with col3:
+            st.metric("Healthy Cases", len(data) - data['status'].sum())
+        
+        # Class distribution
+        fig = px.pie(
+            values=data['status'].value_counts().values,
+            names=['Healthy', 'Parkinson\'s'],
+            title="Class Distribution",
+            color_discrete_sequence=['#74b9ff', '#fd79a8']
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Feature correlation
+        st.subheader("🔗 Feature Correlation Analysis")
+        
+        # Select top correlated features with status
+        feature_cols = [col for col in data.columns if col not in ['name', 'status']]
+        correlations = data[feature_cols + ['status']].corr()['status'].abs().sort_values(ascending=False)
+        top_features = correlations.head(10).index[1:]  # Exclude 'status' itself
+        
+        # Correlation heatmap
+        fig, ax = plt.subplots(figsize=(12, 8))
+        correlation_matrix = data[list(top_features) + ['status']].corr()
+        sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', center=0, ax=ax)
+        ax.set_title('Top 10 Features Correlation with Parkinson\'s Status')
+        st.pyplot(fig)
+        
+        # Feature distribution
+        st.subheader("📊 Feature Distributions")
+        
+        selected_features = st.multiselect(
+            "Select features to analyze:",
+            feature_cols[:10],  # Show first 10 features
+            default=feature_cols[:3]
+        )
+        
+        if selected_features:
+            fig, axes = plt.subplots(len(selected_features), 1, figsize=(12, 4*len(selected_features)))
+            if len(selected_features) == 1:
+                axes = [axes]
+            
+            for i, feature in enumerate(selected_features):
+                for status in [0, 1]:
+                    subset = data[data['status'] == status][feature]
+                    axes[i].hist(subset, alpha=0.7, label=f'{"Parkinson\'s" if status else "Healthy"}', bins=30)
+                
+                axes[i].set_title(f'Distribution of {feature}')
+                axes[i].set_xlabel(feature)
+                axes[i].set_ylabel('Frequency')
+                axes[i].legend()
+            
+            plt.tight_layout()
+            st.pyplot(fig)
+
+with tab3:
+    st.header("🔮 Make New Predictions")
+    
+    if 'models' in st.session_state:
+        st.success("✅ Models are trained and ready for predictions!")
+        
+        # Input method selection
+        input_method = st.radio(
+            "Choose input method:",
+            ["Manual Input", "Random Sample", "Upload CSV"]
+        )
+        
+        if input_method == "Manual Input":
+            st.subheader("📝 Enter Voice Measurements")
+            
+            # Create input fields for key features
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                mdvp_fo = st.number_input("MDVP:Fo(Hz) - Average vocal fundamental frequency", 
+                                         value=154.0, min_value=50.0, max_value=300.0)
+                mdvp_fhi = st.number_input("MDVP:Fhi(Hz) - Maximum vocal fundamental frequency",
+                                          value=197.0, min_value=80.0, max_value=400.0)
+                mdvp_flo = st.number_input("MDVP:Flo(Hz) - Minimum vocal fundamental frequency",
+                                          value=116.0, min_value=40.0, max_value=200.0)
+                mdvp_jitter = st.number_input("MDVP:Jitter(%) - Jitter percentage",
+                                             value=0.00662, min_value=0.0, max_value=0.1)
+                mdvp_rap = st.number_input("MDVP:RAP - Relative amplitude perturbation",
+                                          value=0.00300, min_value=0.0, max_value=0.1)
+            
+            with col2:
+                mdvp_ppq = st.number_input("MDVP:PPQ - Period perturbation quotient",
+                                          value=0.00426, min_value=0.0, max_value=0.1)
+                mdvp_shimmer = st.number_input("MDVP:Shimmer - Shimmer percentage",
+                                              value=0.02971, min_value=0.0, max_value=0.2)
+                mdvp_apq = st.number_input("MDVP:APQ - Amplitude perturbation quotient",
+                                          value=0.02309, min_value=0.0, max_value=0.2)
+                hnr = st.number_input("HNR - Harmonic-to-noise ratio",
+                                     value=21.033, min_value=0.0, max_value=40.0)
+                dfa = st.number_input("DFA - Detrended fluctuation analysis",
+                                     value=0.641, min_value=0.0, max_value=1.0)
+            
+            # Use default values for remaining features (simplified for demo)
+            feature_values = [
+                mdvp_fo, mdvp_fhi, mdvp_flo, mdvp_jitter, mdvp_jitter*1.2, 
+                mdvp_rap, mdvp_ppq, 0.00567, mdvp_shimmer, mdvp_shimmer*0.8, 
+                mdvp_apq, mdvp_apq*1.1, 0.027778, 0.029, 0.158, hnr, 0.197, 
+                0.226, 2.168, 0.498, 0.527, dfa
+            ]
+            
+            input_data = np.array(feature_values).reshape(1, -1)
+        
+        elif input_method == "Random Sample":
+            if st.button("🎲 Generate Random Sample"):
+                # Get a random sample from the test set
+                random_idx = np.random.randint(0, len(X_test))
+                input_data = X_test[random_idx:random_idx+1]
+                actual_label = y_test.iloc[random_idx] if hasattr(y_test, 'iloc') else y_test[random_idx]
+                st.info(f"Selected sample - Actual diagnosis: {'Parkinson\'s' if actual_label else 'Healthy'}")
+        
+        if 'input_data' in locals():
+            # Make predictions with all models
+            if st.button("🔍 Predict", type="primary"):
+                predictions = {}
+                probabilities = {}
+                
+                for model_name, model in st.session_state['models'].items():
+                    if model_name == "Deep Neural Network" and TENSORFLOW_AVAILABLE:
+                        pred_proba = model.predict(input_data, verbose=0)[0][0]
+                        pred = 1 if pred_proba > 0.5 else 0
+                        probabilities[model_name] = pred_proba
+                    else:
+                        pred = model.predict(input_data)[0]
+                        if hasattr(model, 'predict_proba'):
+                            pred_proba = model.predict_proba(input_data)[0][1]
+                            probabilities[model_name] = pred_proba
+                    
+                    predictions[model_name] = pred
                 
                 # Display results
-                st.write("### AI Prediction Results:")
-                st.dataframe(df[['AI_Prediction_Label', 'AI_Model_Used'] + feature_names[:5]])
+                st.subheader("🎯 Prediction Results")
                 
-                # Enhanced summary statistics
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Total Samples", len(df))
-                col2.metric("Predicted Healthy", len(df[df['AI_Prediction'] == 0]))
-                col3.metric("Predicted Parkinson's", len(df[df['AI_Prediction'] == 1]))
-                col4.metric("AI Model", selected_model)
+                cols = st.columns(len(predictions))
+                for i, (model_name, pred) in enumerate(predictions.items()):
+                    with cols[i]:
+                        color = "red" if pred else "green"
+                        result = "Parkinson's" if pred else "Healthy"
+                        confidence = probabilities.get(model_name, 0) * 100
+                        
+                        st.markdown(f"""
+                        <div style="background-color: {'#ffebee' if pred else '#e8f5e8'}; 
+                                   padding: 1rem; border-radius: 8px; 
+                                   border-left: 4px solid {color};">
+                            <h4>{model_name}</h4>
+                            <h3 style="color: {color};">{result}</h3>
+                            <p>Confidence: {confidence:.1f}%</p>
+                        </div>
+                        """, unsafe_allow_html=True)
                 
-                # Download results
-                csv = df.to_csv(index=False)
-                st.download_button(
-                    label="📥 Download AI Results",
-                    data=csv,
-                    file_name=f"ai_
+                # Ensemble prediction
+                if len(predictions) > 1:
+                    ensemble_pred = sum(predictions.values()) / len(predictions)
+                    ensemble_result = "Parkinson's" if ensemble_pred > 0.5 else "Healthy"
+                    
+                    st.markdown("### 🏆 Ensemble Prediction")
+                    st.markdown(f"""
+                    <div style="background-color: #e3f2fd; padding: 1.5rem; 
+                               border-radius: 10px; border: 2px solid #2196f3;">
+                        <h3 style="color: #1976d2;">AI Ensemble Result: {ensemble_result}</h3>
+                        <p>Consensus Score: {ensemble_pred:.2f}</p>
+                        <p>Models Agreement: {sum(predictions.values())}/{len(predictions)} models predict Parkinson's</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+with tab4:
+    st.header("📊 Model Performance Comparison")
+    
+    if 'results' in st.session_state:
+        results = st.session_state['results']
+        
+        # Performance metrics
+        st.subheader("🏆 Accuracy Comparison")
+        
+        # Create comparison dataframe
+        comparison_df = pd.DataFrame({
+            'Model': list(results.keys()),
+            'Accuracy': [results[model]['accuracy'] for model in results.keys()]
+        })
+        
+        # Interactive bar chart
+        fig = px.bar(
+            comparison_df, 
+            x='Model', 
+            y='Accuracy',
+            title="Model Accuracy Comparison",
+            color='Accuracy',
+            color_continuous_scale='viridis'
+        )
+        fig.update_layout(showlegend=False)
+        fig.update_traces(texttemplate='%{y:.4f}', textposition='outside')
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Best model highlight
+        best_model = max(results.keys(), key=lambda x: results[x]['accuracy'])
+        best_accuracy = results[best_model]['accuracy']
+        
+        st.success(f"🏆 **Best Model:** {best_model} with accuracy of {best_accuracy:.4f}")
+        
+        # Model comparison table
+        st.subheader("📋 Detailed Comparison")
+        st.dataframe(comparison_df.style.highlight_max(subset=['Accuracy']))
+    
+    else:
+        st.info("👆 Please train the models first in the 'AI Models' tab to see comparisons.")
+
+# Footer
+st.markdown("---")
+st.markdown("""
+<div style="text-align: center; color: #666; padding: 2rem;">
+    <h3>🧠 AI Parkinson's Detection System</h3>
+    <p>Powered by Machine Learning & Deep Learning | Built with Streamlit</p>
+    <p>⚡ Advanced AI Models: KNN • Naive Bayes • SVM • Neural Networks • Deep Learning</p>
+</div>
+""", unsafe_allow_html=True)
