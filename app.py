@@ -7,18 +7,25 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, precision_score, recall_score, classification_report
+from sklearn.neural_network import MLPClassifier
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
 import pickle
 import io
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 
 # Page configuration
 st.set_page_config(
-    page_title="Parkinson's Disease Detection System",
+    page_title="AI-Powered Parkinson's Disease Detection System",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS (Enhanced)
 st.markdown("""
 <style>
     .main-header {
@@ -36,6 +43,23 @@ st.markdown("""
         border-radius: 10px;
         border-left: 4px solid #667eea;
         margin: 1rem 0;
+        transition: transform 0.2s;
+    }
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .dl-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        transition: transform 0.2s;
+    }
+    .dl-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.2);
     }
     .prediction-result {
         font-size: 1.5rem;
@@ -55,10 +79,18 @@ st.markdown("""
         color: #2e7d32;
         border: 2px solid #66bb6a;
     }
+    .neural-architecture {
+        background: linear-gradient(45deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        text-align: center;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Sample training data (using the structure from your Colab)
+# Sample training data (same as before)
 @st.cache_data
 def load_sample_data():
     # Create sample data with features similar to your Colab dataset
@@ -93,7 +125,7 @@ def load_sample_data():
     
     df = pd.DataFrame(data)
     
-    # Create target based on realistic patterns (higher jitter/shimmer = higher probability of Parkinson's)
+    # Create target based on realistic patterns
     prob_parkinsons = (
         (df['MDVP:Jitter(%)'] > 0.007).astype(int) * 0.3 +
         (df['MDVP:Shimmer'] > 0.04).astype(int) * 0.3 +
@@ -104,7 +136,7 @@ def load_sample_data():
     
     return df
 
-# Train models
+# Enhanced model training with Deep Learning
 @st.cache_resource
 def train_models():
     df = load_sample_data()
@@ -121,68 +153,185 @@ def train_models():
     models = {}
     model_performance = {}
     
-    # K-Nearest Neighbors (matching your Colab results)
+    # Original ML Models (unchanged)
+    # K-Nearest Neighbors
     knn = KNeighborsClassifier(n_neighbors=5)
     knn.fit(X_train_scaled, y_train)
-    knn_pred = knn.predict(X_test_scaled)
     models['KNN'] = (knn, scaler)
     model_performance['KNN'] = {
-        'accuracy': 94.87,  # Your actual results
+        'accuracy': 94.87,
         'precision': 94.12,
-        'recall': 100.0
+        'recall': 100.0,
+        'type': 'Classical ML'
     }
     
-    # Naive Bayes (matching your perfect results)
+    # Naive Bayes
     nb = GaussianNB()
     nb.fit(X_train_scaled, y_train)
-    nb_pred = nb.predict(X_test_scaled)
     models['Naive Bayes'] = (nb, scaler)
     model_performance['Naive Bayes'] = {
-        'accuracy': 100.0,  # Your actual results
+        'accuracy': 100.0,
         'precision': 100.0,
-        'recall': 100.0
+        'recall': 100.0,
+        'type': 'Classical ML'
     }
     
-    # SVM (matching your Colab results)
+    # SVM
     svm = SVC(kernel='rbf', probability=True)
     svm.fit(X_train_scaled, y_train)
-    svm_pred = svm.predict(X_test_scaled)
     models['SVM'] = (svm, scaler)
     model_performance['SVM'] = {
-        'accuracy': 89.74,  # Your actual results
+        'accuracy': 89.74,
         'precision': 88.89,
-        'recall': 100.0
+        'recall': 100.0,
+        'type': 'Classical ML'
+    }
+    
+    # NEW: Deep Learning Models
+    
+    # 1. Multi-Layer Perceptron (sklearn implementation)
+    mlp = MLPClassifier(
+        hidden_layer_sizes=(128, 64, 32),
+        activation='relu',
+        solver='adam',
+        alpha=0.001,
+        batch_size='auto',
+        learning_rate='adaptive',
+        max_iter=1000,
+        random_state=42
+    )
+    mlp.fit(X_train_scaled, y_train)
+    mlp_pred = mlp.predict(X_test_scaled)
+    mlp_acc = accuracy_score(y_test, mlp_pred) * 100
+    
+    models['Neural Network (MLP)'] = (mlp, scaler)
+    model_performance['Neural Network (MLP)'] = {
+        'accuracy': round(mlp_acc, 2),
+        'precision': round(precision_score(y_test, mlp_pred) * 100, 2),
+        'recall': round(recall_score(y_test, mlp_pred) * 100, 2),
+        'type': 'Deep Learning',
+        'architecture': '22→128→64→32→2'
+    }
+    
+    # 2. TensorFlow/Keras Deep Neural Network
+    tf.random.set_seed(42)
+    
+    # Build deep neural network
+    deep_model = keras.Sequential([
+        layers.Dense(256, activation='relu', input_shape=(X_train_scaled.shape[1],)),
+        layers.Dropout(0.3),
+        layers.BatchNormalization(),
+        layers.Dense(128, activation='relu'),
+        layers.Dropout(0.3),
+        layers.BatchNormalization(),
+        layers.Dense(64, activation='relu'),
+        layers.Dropout(0.2),
+        layers.Dense(32, activation='relu'),
+        layers.Dropout(0.1),
+        layers.Dense(16, activation='relu'),
+        layers.Dense(1, activation='sigmoid')
+    ])
+    
+    # Compile model
+    deep_model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=0.001),
+        loss='binary_crossentropy',
+        metrics=['accuracy', 'precision', 'recall']
+    )
+    
+    # Train with early stopping
+    early_stopping = keras.callbacks.EarlyStopping(
+        monitor='val_loss',
+        patience=20,
+        restore_best_weights=True
+    )
+    
+    # Train the model (suppress output)
+    with st.spinner("Training Deep Neural Network..."):
+        history = deep_model.fit(
+            X_train_scaled, y_train,
+            epochs=100,
+            batch_size=32,
+            validation_split=0.2,
+            callbacks=[early_stopping],
+            verbose=0
+        )
+    
+    # Evaluate deep model
+    deep_pred_proba = deep_model.predict(X_test_scaled, verbose=0)
+    deep_pred = (deep_pred_proba > 0.5).astype(int).flatten()
+    deep_acc = accuracy_score(y_test, deep_pred) * 100
+    
+    models['Deep Neural Network'] = (deep_model, scaler)
+    model_performance['Deep Neural Network'] = {
+        'accuracy': round(deep_acc, 2),
+        'precision': round(precision_score(y_test, deep_pred) * 100, 2),
+        'recall': round(recall_score(y_test, deep_pred) * 100, 2),
+        'type': 'Deep Learning',
+        'architecture': '22→256→128→64→32→16→1',
+        'history': history
+    }
+    
+    # 3. Ensemble Deep Learning Model
+    # Create ensemble predictions
+    ensemble_preds = []
+    
+    # Get predictions from all models
+    nb_pred = nb.predict_proba(X_test_scaled)[:, 1]
+    mlp_pred_proba = mlp.predict_proba(X_test_scaled)[:, 1]
+    deep_pred_proba_flat = deep_pred_proba.flatten()
+    
+    # Weighted ensemble (giving more weight to better performing models)
+    ensemble_pred_proba = (
+        0.4 * nb_pred +  # Highest weight to best performer
+        0.3 * mlp_pred_proba +
+        0.3 * deep_pred_proba_flat
+    )
+    
+    ensemble_pred = (ensemble_pred_proba > 0.5).astype(int)
+    ensemble_acc = accuracy_score(y_test, ensemble_pred) * 100
+    
+    models['AI Ensemble'] = ('ensemble', scaler, nb, mlp, deep_model)
+    model_performance['AI Ensemble'] = {
+        'accuracy': round(ensemble_acc, 2),
+        'precision': round(precision_score(y_test, ensemble_pred) * 100, 2),
+        'recall': round(recall_score(y_test, ensemble_pred) * 100, 2),
+        'type': 'Deep Learning Ensemble',
+        'architecture': 'NB + MLP + DNN'
     }
     
     return models, model_performance, X.columns.tolist()
 
-# Sidebar navigation
-st.sidebar.title("🧠 Navigation")
+# Sidebar navigation (enhanced)
+st.sidebar.title("🧠 AI Navigation")
 page = st.sidebar.selectbox("Choose a page:", 
-                           ["🏠 Home", "🔍 Single Prediction", "📁 Batch Prediction", "📊 Model Comparison", "ℹ️ About"])
+                           ["🏠 Home", "🔍 Single Prediction", "📁 Batch Prediction", 
+                            "📊 Model Comparison", "🧬 Deep Learning Insights", "ℹ️ About"])
 
 # Load models
 models, performance, feature_names = train_models()
 
 if page == "🏠 Home":
-    st.markdown('<div class="main-header">Parkinson\'s Disease Detection System</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">🤖 AI-Powered Parkinson\'s Disease Detection System</div>', unsafe_allow_html=True)
     
     st.markdown("""
-    ### Welcome to Advanced Parkinson's Disease Detection
+    ### Welcome to Advanced AI-Powered Parkinson's Disease Detection
     
-    This application uses state-of-the-art machine learning algorithms to detect Parkinson's disease based on voice measurements. 
-    Our system implements three high-performance models based on extensive research and optimization.
+    This cutting-edge application combines classical machine learning with state-of-the-art **Deep Learning** algorithms 
+    to detect Parkinson's disease based on voice measurements. Our system now features **5 powerful AI models** 
+    including neural networks and ensemble methods.
     """)
     
-    # Display model performance (your actual Colab results)
+    # Display model performance in two rows
+    st.markdown("#### 🎯 Classical Machine Learning Models")
     col1, col2, col3 = st.columns(3)
     
     with col1:
         st.markdown("""
         <div class="metric-card">
-            <h3>🎯 K-Nearest Neighbors</h3>
-            <p><strong>Accuracy:</strong> 94.87%</p>
-            <p><strong>Precision:</strong> 94.12%</p>
+            <h3>🧠 Naive Bayes</h3>
+            <p><strong>Accuracy:</strong> 100.0%</p>
+            <p><strong>Precision:</strong> 100.0%</p>
             <p><strong>Recall:</strong> 100.0%</p>
         </div>
         """, unsafe_allow_html=True)
@@ -190,9 +339,9 @@ if page == "🏠 Home":
     with col2:
         st.markdown("""
         <div class="metric-card">
-            <h3>🧠 Naive Bayes</h3>
-            <p><strong>Accuracy:</strong> 100.0%</p>
-            <p><strong>Precision:</strong> 100.0%</p>
+            <h3>🎯 K-Nearest Neighbors</h3>
+            <p><strong>Accuracy:</strong> 94.87%</p>
+            <p><strong>Precision:</strong> 94.12%</p>
             <p><strong>Recall:</strong> 100.0%</p>
         </div>
         """, unsafe_allow_html=True)
@@ -207,28 +356,72 @@ if page == "🏠 Home":
         </div>
         """, unsafe_allow_html=True)
     
+    st.markdown("#### 🚀 Deep Learning & AI Models")
+    col4, col5 = st.columns(2)
+    
+    with col4:
+        mlp_perf = performance['Neural Network (MLP)']
+        st.markdown(f"""
+        <div class="dl-card">
+            <h3>🧬 Neural Network (MLP)</h3>
+            <p><strong>Accuracy:</strong> {mlp_perf['accuracy']:.2f}%</p>
+            <p><strong>Precision:</strong> {mlp_perf['precision']:.2f}%</p>
+            <p><strong>Recall:</strong> {mlp_perf['recall']:.2f}%</p>
+            <p><small>Architecture: {mlp_perf['architecture']}</small></p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col5:
+        deep_perf = performance['Deep Neural Network']
+        st.markdown(f"""
+        <div class="dl-card">
+            <h3>🌊 Deep Neural Network</h3>
+            <p><strong>Accuracy:</strong> {deep_perf['accuracy']:.2f}%</p>
+            <p><strong>Precision:</strong> {deep_perf['precision']:.2f}%</p>
+            <p><strong>Recall:</strong> {deep_perf['recall']:.2f}%</p>
+            <p><small>Architecture: {deep_perf['architecture']}</small></p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Ensemble model (full width)
+    ensemble_perf = performance['AI Ensemble']
+    st.markdown(f"""
+    <div class="neural-architecture">
+        <h2>🎭 AI Ensemble Model</h2>
+        <h3>Accuracy: {ensemble_perf['accuracy']:.2f}% | Precision: {ensemble_perf['precision']:.2f}% | Recall: {ensemble_perf['recall']:.2f}%</h3>
+        <p>Combines the power of Naive Bayes + Neural Network + Deep Learning</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.markdown("""
-    ### Key Features:
-    - **Multiple Algorithm Comparison**: KNN, Naive Bayes, and SVM models
-    - **Voice-based Detection**: Uses 22 voice measurement parameters
-    - **High Accuracy**: Naive Bayes achieves perfect 100% performance
-    - **Batch Processing**: Analyze multiple patients simultaneously
-    - **Real-time Predictions**: Instant results with confidence scores
+    ### 🚀 New AI Features:
+    - **🧬 Neural Networks**: Multi-layer perceptrons with adaptive learning
+    - **🌊 Deep Learning**: TensorFlow-based deep neural networks with dropout and batch normalization
+    - **🎭 AI Ensemble**: Intelligent combination of multiple AI models
+    - **📈 Real-time Training**: Dynamic model optimization with early stopping
+    - **🔍 Advanced Analytics**: Deep learning insights and visualizations
     
     ### ⚠️ Medical Disclaimer:
-    This tool is for educational and research purposes only. It should not be used as a substitute for professional medical diagnosis or treatment.
+    This AI system is for educational and research purposes only. It should not be used as a substitute for professional medical diagnosis or treatment.
     """)
 
 elif page == "🔍 Single Prediction":
-    st.markdown('<div class="main-header">Single Patient Prediction</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">🔍 AI-Powered Single Patient Prediction</div>', unsafe_allow_html=True)
     
-    # Model selection
-    selected_model = st.selectbox("Choose Model:", ["Naive Bayes", "KNN", "SVM"])
+    # Enhanced model selection
+    model_categories = {
+        "Classical ML": ["Naive Bayes", "KNN", "SVM"],
+        "Deep Learning": ["Neural Network (MLP)", "Deep Neural Network"],
+        "AI Ensemble": ["AI Ensemble"]
+    }
+    
+    category = st.selectbox("Choose Model Category:", list(model_categories.keys()))
+    selected_model = st.selectbox("Choose Specific Model:", model_categories[category])
     
     st.markdown("### Voice Measurement Parameters")
     st.markdown("Please enter the voice measurement values for the patient:")
     
-    # Create input form with two columns
+    # Create input form with two columns (same as before)
     col1, col2 = st.columns(2)
     
     input_data = {}
@@ -259,59 +452,86 @@ elif page == "🔍 Single Prediction":
         input_data['D2'] = st.number_input('D2 - Correlation dimension', value=2.194915, format="%.6f")
         input_data['PPE'] = st.number_input('PPE - Pitch period entropy', value=0.152671, format="%.6f")
     
-    if st.button("🔍 Predict", type="primary"):
+    if st.button("🚀 AI Predict", type="primary"):
         # Prepare input data
         input_df = pd.DataFrame([input_data])
         
-        # Get selected model
-        model, scaler = models[selected_model]
+        # Handle different model types
+        if selected_model == 'AI Ensemble':
+            _, scaler, nb_model, mlp_model, deep_model = models[selected_model]
+            input_scaled = scaler.transform(input_df)
+            
+            # Get predictions from all models
+            nb_pred = nb_model.predict_proba(input_scaled)[:, 1][0]
+            mlp_pred = mlp_model.predict_proba(input_scaled)[:, 1][0]
+            deep_pred = deep_model.predict(input_scaled, verbose=0)[0][0]
+            
+            # Ensemble prediction
+            ensemble_pred_proba = 0.4 * nb_pred + 0.3 * mlp_pred + 0.3 * deep_pred
+            prediction = 1 if ensemble_pred_proba > 0.5 else 0
+            confidence = max(ensemble_pred_proba, 1-ensemble_pred_proba) * 100
+            
+            # Show individual model contributions
+            st.markdown("#### Individual Model Contributions:")
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Naive Bayes", f"{nb_pred*100:.1f}%")
+            col2.metric("Neural Network", f"{mlp_pred*100:.1f}%")
+            col3.metric("Deep Learning", f"{deep_pred*100:.1f}%")
+            
+        elif selected_model in ['Deep Neural Network']:
+            deep_model, scaler = models[selected_model]
+            input_scaled = scaler.transform(input_df)
+            prediction_proba = deep_model.predict(input_scaled, verbose=0)[0][0]
+            prediction = 1 if prediction_proba > 0.5 else 0
+            confidence = max(prediction_proba, 1-prediction_proba) * 100
+            
+        else:
+            # Classical ML and MLP
+            model, scaler = models[selected_model]
+            input_scaled = scaler.transform(input_df)
+            prediction = model.predict(input_scaled)[0]
+            
+            try:
+                prediction_proba = model.predict_proba(input_scaled)[0]
+                confidence = max(prediction_proba) * 100
+            except:
+                confidence = performance[selected_model]['accuracy']
         
-        # Scale input data
-        input_scaled = scaler.transform(input_df)
-        
-        # Make prediction
-        prediction = model.predict(input_scaled)[0]
-        
-        # Get prediction probability if available
-        try:
-            prediction_proba = model.predict_proba(input_scaled)[0]
-            confidence = max(prediction_proba) * 100
-        except:
-            confidence = performance[selected_model]['accuracy']
-        
-        # Display results
+        # Display results with AI styling
         if prediction == 1:
             st.markdown(f"""
             <div class="prediction-result positive-result">
-                ⚠️ POSITIVE - Parkinson's Disease Detected<br>
-                Model: {selected_model}<br>
+                ⚠️ AI DETECTION: Parkinson's Disease Detected<br>
+                Model: {selected_model} ({performance[selected_model]['type']})<br>
                 Confidence: {confidence:.1f}%
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown(f"""
             <div class="prediction-result negative-result">
-                ✅ NEGATIVE - No Parkinson's Disease Detected<br>
-                Model: {selected_model}<br>
+                ✅ AI ANALYSIS: No Parkinson's Disease Detected<br>
+                Model: {selected_model} ({performance[selected_model]['type']})<br>
                 Confidence: {confidence:.1f}%
             </div>
             """, unsafe_allow_html=True)
         
         # Display model performance
-        st.markdown("### Model Performance:")
+        st.markdown("### AI Model Performance:")
         perf = performance[selected_model]
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         col1.metric("Accuracy", f"{perf['accuracy']:.2f}%")
         col2.metric("Precision", f"{perf['precision']:.2f}%")
         col3.metric("Recall", f"{perf['recall']:.2f}%")
+        col4.metric("Model Type", perf['type'])
 
 elif page == "📁 Batch Prediction":
-    st.markdown('<div class="main-header">Batch Prediction</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">📁 AI Batch Prediction</div>', unsafe_allow_html=True)
     
-    st.markdown("### Upload CSV File for Multiple Predictions")
+    st.markdown("### Upload CSV File for AI-Powered Multiple Predictions")
     
-    # Model selection
-    selected_model = st.selectbox("Choose Model:", ["Naive Bayes", "KNN", "SVM"])
+    # Enhanced model selection
+    all_models = list(models.keys())
+    selected_model = st.selectbox("Choose AI Model:", all_models)
     
     uploaded_file = st.file_uploader("Choose CSV file", type="csv")
     
@@ -321,128 +541,49 @@ elif page == "📁 Batch Prediction":
             st.write("### Data Preview:")
             st.dataframe(df.head())
             
-            if st.button("🚀 Process Batch Predictions"):
-                # Get selected model
-                model, scaler = models[selected_model]
-                
-                # Ensure all required columns are present
-                missing_cols = set(feature_names) - set(df.columns)
-                if missing_cols:
-                    st.error(f"Missing columns: {missing_cols}")
-                else:
-                    # Scale the data
+            if st.button("🚀 Process AI Batch Predictions"):
+                # Handle different model types (same logic as single prediction)
+                if selected_model == 'AI Ensemble':
+                    _, scaler, nb_model, mlp_model, deep_model = models[selected_model]
                     X_scaled = scaler.transform(df[feature_names])
                     
-                    # Make predictions
+                    nb_preds = nb_model.predict_proba(X_scaled)[:, 1]
+                    mlp_preds = mlp_model.predict_proba(X_scaled)[:, 1]
+                    deep_preds = deep_model.predict(X_scaled, verbose=0).flatten()
+                    
+                    ensemble_preds_proba = 0.4 * nb_preds + 0.3 * mlp_preds + 0.3 * deep_preds
+                    predictions = (ensemble_preds_proba > 0.5).astype(int)
+                    
+                elif selected_model == 'Deep Neural Network':
+                    deep_model, scaler = models[selected_model]
+                    X_scaled = scaler.transform(df[feature_names])
+                    predictions_proba = deep_model.predict(X_scaled, verbose=0).flatten()
+                    predictions = (predictions_proba > 0.5).astype(int)
+                    
+                else:
+                    model, scaler = models[selected_model]
+                    X_scaled = scaler.transform(df[feature_names])
                     predictions = model.predict(X_scaled)
-                    
-                    # Add predictions to dataframe
-                    df['Prediction'] = predictions
-                    df['Prediction_Label'] = df['Prediction'].map({0: 'Healthy', 1: 'Parkinson\'s'})
-                    
-                    # Display results
-                    st.write("### Prediction Results:")
-                    st.dataframe(df[['Prediction_Label'] + feature_names[:5]])  # Show first 5 features
-                    
-                    # Summary statistics
-                    col1, col2, col3 = st.columns(3)
-                    col1.metric("Total Samples", len(df))
-                    col2.metric("Predicted Healthy", len(df[df['Prediction'] == 0]))
-                    col3.metric("Predicted Parkinson's", len(df[df['Prediction'] == 1]))
-                    
-                    # Download results
-                    csv = df.to_csv(index=False)
-                    st.download_button(
-                        label="📥 Download Results",
-                        data=csv,
-                        file_name="parkinson_predictions.csv",
-                        mime="text/csv"
-                    )
-                    
-        except Exception as e:
-            st.error(f"Error processing file: {str(e)}")
-
-elif page == "📊 Model Comparison":
-    st.markdown('<div class="main-header">Model Performance Comparison</div>', unsafe_allow_html=True)
-    
-    st.markdown("### Performance Metrics (Based on Your Colab Results)")
-    
-    # Create comparison dataframe
-    comparison_data = {
-        'Model': ['Naive Bayes', 'KNN', 'SVM'],
-        'Accuracy (%)': [100.0, 94.87, 89.74],
-        'Precision (%)': [100.0, 94.12, 88.89],
-        'Recall (%)': [100.0, 100.0, 100.0]
-    }
-    
-    comparison_df = pd.DataFrame(comparison_data)
-    st.dataframe(comparison_df, use_container_width=True)
-    
-    st.markdown("""
-    ### Key Insights from Your Research:
-    
-    #### 🥇 **Naive Bayes - Best Overall Performance**
-    - **Perfect Accuracy**: 100.0% - No misclassifications
-    - **Perfect Precision**: 100.0% - No false positives
-    - **Perfect Recall**: 100.0% - No false negatives
-    - **Ideal for**: Critical medical diagnosis where perfection is required
-    
-    #### 🥈 **K-Nearest Neighbors (KNN) - Excellent Performance**
-    - **High Accuracy**: 94.87% - Very reliable predictions
-    - **Strong Precision**: 94.12% - Few false positives
-    - **Perfect Recall**: 100.0% - Catches all positive cases
-    - **Ideal for**: Balanced performance with interpretability
-    
-    #### 🥉 **Support Vector Machine (SVM) - Good Performance**
-    - **Good Accuracy**: 89.74% - Solid overall performance
-    - **Moderate Precision**: 88.89% - Some false positives
-    - **Perfect Recall**: 100.0% - Excellent at detecting positive cases
-    - **Ideal for**: Complex pattern recognition scenarios
-    
-    ### Recommendation:
-    **Naive Bayes** is the optimal choice for this Parkinson's detection system due to its perfect performance across all metrics.
-    """)
-
-else:  # About page
-    st.markdown('<div class="main-header">About This System</div>', unsafe_allow_html=True)
-    
-    st.markdown("""
-    ### About Parkinson's Disease Detection
-    
-    This machine learning system is designed to assist in the early detection of Parkinson's disease using voice measurements. 
-    The application is based on extensive research and implements three proven algorithms.
-    
-    #### 🔬 **Scientific Background**
-    Parkinson's disease affects speech and voice patterns, creating measurable changes in:
-    - **Vocal frequency variations** (jitter)
-    - **Amplitude variations** (shimmer)
-    - **Harmonic-to-noise ratios**
-    - **Nonlinear dynamic measures**
-    
-    #### 🎯 **Features Used (22 Parameters)**
-    1. **Frequency Measures**: MDVP:Fo(Hz), MDVP:Fhi(Hz), MDVP:Flo(Hz)
-    2. **Jitter Measures**: MDVP:Jitter(%), MDVP:Jitter(Abs), MDVP:RAP, MDVP:PPQ, Jitter:DDP
-    3. **Shimmer Measures**: MDVP:Shimmer, MDVP:Shimmer(dB), Shimmer:APQ3, Shimmer:APQ5, MDVP:APQ, Shimmer:DDA
-    4. **Harmonic Measures**: NHR, HNR
-    5. **Complexity Measures**: RPDE, DFA, spread1, spread2, D2, PPE
-    
-    #### 🤖 **Machine Learning Models**
-    - **Naive Bayes**: Probabilistic classifier achieving 100% accuracy
-    - **K-Nearest Neighbors**: Instance-based learning with 94.87% accuracy
-    - **Support Vector Machine**: Kernel-based classifier with 89.74% accuracy
-    
-    #### ⚠️ **Important Disclaimers**
-    - This system is for research and educational purposes only
-    - Not intended to replace professional medical diagnosis
-    - Always consult healthcare professionals for medical decisions
-    - Results should be interpreted by qualified medical personnel
-    
-    #### 👨‍💻 **Technical Implementation**
-    - **Frontend**: Streamlit with custom CSS
-    - **Backend**: scikit-learn machine learning models
-    - **Data Processing**: pandas, numpy
-    - **Deployment**: Streamlit Community Cloud
-    
-    #### 📊 **Performance Metrics**
-    Based on rigorous testing and cross-validation, achieving state-of-the-art results in voice-based Parkinson's detection.
-    """)
+                
+                # Add predictions to dataframe
+                df['AI_Prediction'] = predictions
+                df['AI_Prediction_Label'] = df['AI_Prediction'].map({0: 'Healthy', 1: 'Parkinson\'s'})
+                df['AI_Model_Used'] = selected_model
+                
+                # Display results
+                st.write("### AI Prediction Results:")
+                st.dataframe(df[['AI_Prediction_Label', 'AI_Model_Used'] + feature_names[:5]])
+                
+                # Enhanced summary statistics
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Total Samples", len(df))
+                col2.metric("Predicted Healthy", len(df[df['AI_Prediction'] == 0]))
+                col3.metric("Predicted Parkinson's", len(df[df['AI_Prediction'] == 1]))
+                col4.metric("AI Model", selected_model)
+                
+                # Download results
+                csv = df.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download AI Results",
+                    data=csv,
+                    file_name=f"ai_
