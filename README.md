@@ -2,7 +2,7 @@
 
 This project is an interactive Streamlit-based machine learning application designed to detect Parkinson’s Disease using biomedical voice measurement data. The system trains and evaluates multiple machine learning and deep learning models and provides real-time predictions along with detailed analytical visualizations.
 
-Live Application:  
+Live Application:-  
 https://my-colab-app-kgowg3c7sbjwhehtcydp8k.streamlit.app/
 
 ---
